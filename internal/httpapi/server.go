@@ -60,8 +60,8 @@ type observationRequest struct {
 }
 
 type changeRequest struct {
-	ObservationToken string `json:"observation_token"`
-	Mode             string `json:"mode"`
+	ObservationToken string  `json:"observation_token"`
+	Mode             string  `json:"mode"`
 	ContentBase64    *string `json:"content_base64"`
 }
 
