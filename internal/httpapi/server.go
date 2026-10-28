@@ -340,47 +340,63 @@ func (s *Server) change(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getOrCreateSession(ctx context.Context, resourceID string, provider *gitprovider.FileProvider, repo *gitprovider.Repository) (*resourceSession, control.Observation, error) {
-	s.mu.Lock()
-	session := s.sessions[resourceID]
-	s.mu.Unlock()
-	if session == nil {
-		observation, err := provider.Observe(ctx, control.ObserveRequest{Target: control.ResourceRef{ID: resourceID}})
-		if err != nil {
-			return nil, control.Observation{}, err
-		}
-		candidate, err := newResourceSession(repo, provider, observation.Resource.Fingerprint)
-		if err != nil {
-			return nil, control.Observation{}, err
-		}
+	for {
 		s.mu.Lock()
-		if existing := s.sessions[resourceID]; existing != nil {
-			session = existing
-		} else {
-			s.sessions[resourceID] = candidate
-			session = candidate
+		session := s.sessions[resourceID]
+		s.mu.Unlock()
+		if session == nil {
+			observation, err := provider.Observe(ctx, control.ObserveRequest{Target: control.ResourceRef{ID: resourceID}})
+			if err != nil {
+				return nil, control.Observation{}, err
+			}
+			candidate, err := newResourceSession(repo, provider, observation.Resource.Fingerprint)
+			if err != nil {
+				return nil, control.Observation{}, err
+			}
+			s.mu.Lock()
+			if s.sessions[resourceID] == nil {
+				s.sessions[resourceID] = candidate
+				s.mu.Unlock()
+				return candidate, observation, nil
+			}
 			s.mu.Unlock()
-			return session, observation, nil
+			continue
 		}
+
+		session.mu.Lock()
+		s.mu.Lock()
+		current := s.sessions[resourceID]
 		s.mu.Unlock()
-	}
-	session.mu.Lock()
-	defer session.mu.Unlock()
-	observation, err := session.provider.Observe(ctx, control.ObserveRequest{Target: control.ResourceRef{ID: resourceID}})
-	if err != nil {
-		return nil, control.Observation{}, err
-	}
-	phase := session.runtime.Phase()
-	if (phase == kernel.PhaseIdle || phase == kernel.PhaseCommitted) && session.runtime.Root() != observation.Resource.Fingerprint {
-		replacement, err := newResourceSession(session.repo, session.provider, observation.Resource.Fingerprint)
+		if current != session {
+			session.mu.Unlock()
+			continue
+		}
+		observation, err := session.provider.Observe(ctx, control.ObserveRequest{Target: control.ResourceRef{ID: resourceID}})
 		if err != nil {
+			session.mu.Unlock()
 			return nil, control.Observation{}, err
 		}
-		s.mu.Lock()
-		s.sessions[resourceID] = replacement
-		s.mu.Unlock()
-		return replacement, observation, nil
+		phase := session.runtime.Phase()
+		if (phase == kernel.PhaseIdle || phase == kernel.PhaseCommitted) && session.runtime.Root() != observation.Resource.Fingerprint {
+			replacement, err := newResourceSession(session.repo, session.provider, observation.Resource.Fingerprint)
+			if err != nil {
+				session.mu.Unlock()
+				return nil, control.Observation{}, err
+			}
+			s.mu.Lock()
+			if s.sessions[resourceID] != session {
+				s.mu.Unlock()
+				session.mu.Unlock()
+				continue
+			}
+			s.sessions[resourceID] = replacement
+			s.mu.Unlock()
+			session.mu.Unlock()
+			return replacement, observation, nil
+		}
+		session.mu.Unlock()
+		return session, observation, nil
 	}
-	return session, observation, nil
 }
 
 func newResourceSession(repo *gitprovider.Repository, provider *gitprovider.FileProvider, initialFingerprint string) (*resourceSession, error) {
