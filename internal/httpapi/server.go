@@ -312,7 +312,7 @@ func (s *Server) change(w http.ResponseWriter, r *http.Request) {
 		ObservedAt:       claims.Observation.ObservedAt,
 	}
 	result, err := session.host.Control(r.Context(), providerName, control.ControlRequest{
-		Target:              control.ResourceRef{ID: claims.ResourceID},
+		Target:              control.ResourceRef{ID: claims.ResourceID, Fingerprint: claims.Observation.Fingerprint},
 		Desired:             control.ResourceRef{ID: claims.ResourceID, Fingerprint: fingerprint},
 		Payload:             payload,
 		AuthorityTTL:        s.authorityTTL,
