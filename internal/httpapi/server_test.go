@@ -81,6 +81,71 @@ func TestObserveThenChangeUsesAckOSGitProvider(t *testing.T) {
 	}
 }
 
+func TestSessionsAreNamespacedByRepository(t *testing.T) {
+	firstRoot := initGitRepository(t)
+	secondRoot := initGitRepository(t)
+	api, err := New(Config{
+		Repositories: map[string]string{"first": firstRoot, "second": secondRoot},
+		BearerToken:  "test-client-token",
+		SigningKey:   []byte(strings.Repeat("s", 32)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := api.Handler()
+
+	observe := func(repositoryID string) observationResponse {
+		t.Helper()
+		response := postJSON(t, handler, "/v1/observations", map[string]string{
+			"repository_id": repositoryID,
+			"branch":        "main",
+			"path":          "README.md",
+		}, true)
+		if response.Code != http.StatusOK {
+			t.Fatalf("observe %s status = %d, body = %s", repositoryID, response.Code, response.Body.String())
+		}
+		var result observationResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	firstObservation := observe("first")
+	secondObservation := observe("second")
+
+	want := []byte("# changed only in second repository\n")
+	content := base64.StdEncoding.EncodeToString(want)
+	changed := postJSON(t, handler, "/v1/changes", changeRequest{
+		ObservationToken: secondObservation.ObservationToken,
+		Mode:             "100644",
+		ContentBase64:    &content,
+	}, true)
+	if changed.Code != http.StatusOK {
+		t.Fatalf("change second repository status = %d, body = %s", changed.Code, changed.Body.String())
+	}
+
+	for _, check := range []struct {
+		name string
+		root string
+		want []byte
+	}{
+		{name: "first", root: firstRoot, want: []byte("# initial\n")},
+		{name: "second", root: secondRoot, want: want},
+	} {
+		cmd := exec.Command("git", "-C", check.root, "show", "refs/heads/main:README.md")
+		got, err := cmd.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, check.want) {
+			t.Errorf("%s repository README = %q, want %q", check.name, got, check.want)
+		}
+	}
+	if firstObservation.ObservationToken == secondObservation.ObservationToken {
+		t.Fatal("observations from separate repositories unexpectedly produced identical tokens")
+	}
+}
+
 func TestMutationRoutesRequireBearerToken(t *testing.T) {
 	api, err := New(Config{
 		Repositories: map[string]string{"test-repo": "/unused"},

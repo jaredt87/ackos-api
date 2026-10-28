@@ -46,11 +46,12 @@ type Server struct {
 }
 
 type resourceSession struct {
-	mu       sync.Mutex
-	repo     *gitprovider.Repository
-	provider *gitprovider.FileProvider
-	host     *control.Host
-	runtime  *kernel.Runtime
+	repositoryID string
+	mu           sync.Mutex
+	repo         *gitprovider.Repository
+	provider     *gitprovider.FileProvider
+	host         *control.Host
+	runtime      *kernel.Runtime
 }
 
 type observationRequest struct {
@@ -197,7 +198,7 @@ func (s *Server) observe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, observation, err := s.getOrCreateSession(r.Context(), resourceID, provider, repo)
+	_, observation, err := s.getOrCreateSession(r.Context(), in.RepositoryID, resourceID, provider, repo)
 	if err != nil {
 		writeError(w, http.StatusConflict, "observation_failed", "resource could not be observed")
 		return
@@ -272,7 +273,8 @@ func (s *Server) change(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.Lock()
-	session := s.sessions[claims.ResourceID]
+	key := sessionKey(claims.RepositoryID, claims.ResourceID)
+	session := s.sessions[key]
 	s.mu.Unlock()
 	if session == nil {
 		writeError(w, http.StatusConflict, "session_unavailable", "the observation session is no longer available; inspect the resource again")
@@ -281,9 +283,9 @@ func (s *Server) change(w http.ResponseWriter, r *http.Request) {
 	session.mu.Lock()
 	defer session.mu.Unlock()
 	s.mu.Lock()
-	currentSession := s.sessions[claims.ResourceID]
+	currentSession := s.sessions[key]
 	s.mu.Unlock()
-	if currentSession != session {
+	if currentSession != session || session.repositoryID != claims.RepositoryID {
 		writeError(w, http.StatusConflict, "session_unavailable", "observation session changed; inspect the resource again")
 		return
 	}
@@ -343,23 +345,24 @@ func (s *Server) change(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) getOrCreateSession(ctx context.Context, resourceID string, provider *gitprovider.FileProvider, repo *gitprovider.Repository) (*resourceSession, control.Observation, error) {
+func (s *Server) getOrCreateSession(ctx context.Context, repositoryID, resourceID string, provider *gitprovider.FileProvider, repo *gitprovider.Repository) (*resourceSession, control.Observation, error) {
+	key := sessionKey(repositoryID, resourceID)
 	for {
 		s.mu.Lock()
-		session := s.sessions[resourceID]
+		session := s.sessions[key]
 		s.mu.Unlock()
 		if session == nil {
 			observation, err := provider.Observe(ctx, control.ObserveRequest{Target: control.ResourceRef{ID: resourceID}})
 			if err != nil {
 				return nil, control.Observation{}, err
 			}
-			candidate, err := newResourceSession(repo, provider, observation.Resource.Fingerprint)
+			candidate, err := newResourceSession(repositoryID, repo, provider, observation.Resource.Fingerprint)
 			if err != nil {
 				return nil, control.Observation{}, err
 			}
 			s.mu.Lock()
-			if s.sessions[resourceID] == nil {
-				s.sessions[resourceID] = candidate
+			if s.sessions[key] == nil {
+				s.sessions[key] = candidate
 				s.mu.Unlock()
 				return candidate, observation, nil
 			}
@@ -369,7 +372,7 @@ func (s *Server) getOrCreateSession(ctx context.Context, resourceID string, prov
 
 		session.mu.Lock()
 		s.mu.Lock()
-		current := s.sessions[resourceID]
+		current := s.sessions[key]
 		s.mu.Unlock()
 		if current != session {
 			session.mu.Unlock()
@@ -382,18 +385,18 @@ func (s *Server) getOrCreateSession(ctx context.Context, resourceID string, prov
 		}
 		phase := session.runtime.Phase()
 		if (phase == kernel.PhaseIdle || phase == kernel.PhaseCommitted) && session.runtime.Root() != observation.Resource.Fingerprint {
-			replacement, err := newResourceSession(session.repo, session.provider, observation.Resource.Fingerprint)
+			replacement, err := newResourceSession(repositoryID, session.repo, session.provider, observation.Resource.Fingerprint)
 			if err != nil {
 				session.mu.Unlock()
 				return nil, control.Observation{}, err
 			}
 			s.mu.Lock()
-			if s.sessions[resourceID] != session {
+			if s.sessions[key] != session {
 				s.mu.Unlock()
 				session.mu.Unlock()
 				continue
 			}
-			s.sessions[resourceID] = replacement
+			s.sessions[key] = replacement
 			s.mu.Unlock()
 			session.mu.Unlock()
 			return replacement, observation, nil
@@ -403,7 +406,11 @@ func (s *Server) getOrCreateSession(ctx context.Context, resourceID string, prov
 	}
 }
 
-func newResourceSession(repo *gitprovider.Repository, provider *gitprovider.FileProvider, initialFingerprint string) (*resourceSession, error) {
+func sessionKey(repositoryID, resourceID string) string {
+	return fmt.Sprintf("%q:%q", repositoryID, resourceID)
+}
+
+func newResourceSession(repositoryID string, repo *gitprovider.Repository, provider *gitprovider.FileProvider, initialFingerprint string) (*resourceSession, error) {
 	runtime := kernel.NewRuntime(initialFingerprint, kernel.AllowPolicy{})
 	host, err := control.NewHost(runtime, 30*time.Second)
 	if err != nil {
@@ -412,7 +419,7 @@ func newResourceSession(repo *gitprovider.Repository, provider *gitprovider.File
 	if err := host.Register(providerName, provider); err != nil {
 		return nil, err
 	}
-	return &resourceSession{repo: repo, provider: provider, host: host, runtime: runtime}, nil
+	return &resourceSession{repositoryID: repositoryID, repo: repo, provider: provider, host: host, runtime: runtime}, nil
 }
 
 func (s *Server) signClaims(claims observationClaims) (string, error) {
