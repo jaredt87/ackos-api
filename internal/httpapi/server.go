@@ -280,16 +280,19 @@ func (s *Server) change(w http.ResponseWriter, r *http.Request) {
 	}
 	session.mu.Lock()
 	defer session.mu.Unlock()
+	s.mu.Lock()
+	currentSession := s.sessions[claims.ResourceID]
+	s.mu.Unlock()
+	if currentSession != session {
+		writeError(w, http.StatusConflict, "session_unavailable", "observation session changed; inspect the resource again")
+		return
+	}
 	if err := r.Context().Err(); err != nil {
 		writeError(w, http.StatusRequestTimeout, "request_cancelled", "request was cancelled before execution")
 		return
 	}
 	if claims.ResourceID == "" || claims.Observation.Fingerprint == "" {
 		writeError(w, http.StatusConflict, "invalid_observation", "observation token does not contain a valid resource observation")
-		return
-	}
-	if claims.ResourceID != sessionResourceID(claims) {
-		writeError(w, http.StatusConflict, "invalid_observation", "observation token does not match its resource identity")
 		return
 	}
 	if root == "" {
@@ -391,8 +394,6 @@ func newResourceSession(repo *gitprovider.Repository, provider *gitprovider.File
 	}
 	return &resourceSession{repo: repo, provider: provider, host: host, runtime: runtime}, nil
 }
-
-func sessionResourceID(claims observationClaims) string { return claims.ResourceID }
 
 func (s *Server) signClaims(claims observationClaims) (string, error) {
 	payload, err := json.Marshal(claims)
