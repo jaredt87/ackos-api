@@ -197,12 +197,11 @@ func (s *Server) observe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, observation, err := s.getOrCreateSession(r.Context(), resourceID, provider, repo)
+	_, observation, err := s.getOrCreateSession(r.Context(), resourceID, provider, repo)
 	if err != nil {
 		writeError(w, http.StatusConflict, "observation_failed", "resource could not be observed")
 		return
 	}
-	_ = session
 	claims := observationClaims{
 		Version:      1,
 		RepositoryID: in.RepositoryID,
@@ -461,6 +460,3 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
 }
-
-// Keep context imported in this file's API surface for testable request lifetimes.
-var _ context.Context
