@@ -62,7 +62,7 @@ type observationRequest struct {
 type changeRequest struct {
 	ObservationToken string `json:"observation_token"`
 	Mode             string `json:"mode"`
-	ContentBase64    string `json:"content_base64"`
+	ContentBase64    *string `json:"content_base64"`
 }
 
 type observationClaims struct {
@@ -237,7 +237,7 @@ func (s *Server) change(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	if in.ObservationToken == "" || in.ContentBase64 == "" {
+	if in.ObservationToken == "" || in.ContentBase64 == nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "observation_token and content_base64 are required")
 		return
 	}
@@ -251,8 +251,8 @@ func (s *Server) change(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "repository_not_found", "repository ID is not configured")
 		return
 	}
-	content, err := base64.StdEncoding.Strict().DecodeString(in.ContentBase64)
-	if err != nil || base64.StdEncoding.EncodeToString(content) != in.ContentBase64 {
+	content, err := base64.StdEncoding.Strict().DecodeString(*in.ContentBase64)
+	if err != nil || base64.StdEncoding.EncodeToString(content) != *in.ContentBase64 {
 		writeError(w, http.StatusBadRequest, "invalid_content", "content_base64 must be canonical padded base64")
 		return
 	}
