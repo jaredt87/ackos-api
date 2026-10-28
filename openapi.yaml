@@ -1,0 +1,84 @@
+openapi: 3.1.0
+info:
+  title: ackOS API
+  version: 1.0.0
+  description: >
+    HTTP adapter for the ackOS control runtime. Observation tokens bind changes
+    to provider-derived state and must be treated as opaque secrets.
+servers:
+  - url: http://localhost:8080
+paths:
+  /healthz:
+    get:
+      operationId: health
+      security: []
+      responses:
+        "200":
+          description: Service is live
+  /v1/observations:
+    post:
+      operationId: inspectResource
+      summary: Observe an allowlisted repository file
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [repository_id, branch, path]
+              properties:
+                repository_id:
+                  type: string
+                branch:
+                  type: string
+                path:
+                  type: string
+      responses:
+        "200":
+          description: Provider-derived observation and opaque token
+        "400":
+          description: Invalid resource request
+        "401":
+          description: Missing or invalid bearer token
+        "404":
+          description: Repository ID is not configured
+  /v1/changes:
+    post:
+      operationId: replaceObservedFile
+      summary: Replace an existing file bound to an observation token
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [observation_token, mode, content_base64]
+              properties:
+                observation_token:
+                  type: string
+                mode:
+                  type: string
+                  enum: ["100644", "100755"]
+                content_base64:
+                  type: string
+                  contentEncoding: base64
+      responses:
+        "200":
+          description: Change independently verified and committed by ackOS
+        "400":
+          description: Invalid request or payload
+        "401":
+          description: Missing or invalid bearer token
+        "409":
+          description: Stale observation, unavailable session, or control rejection
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
