@@ -42,10 +42,11 @@ func TestObserveThenChangeUsesAckOSGitProvider(t *testing.T) {
 	}
 
 	want := []byte("# updated by ackOS API\n")
+	contentBase64 := base64.StdEncoding.EncodeToString(want)
 	changed := postJSON(t, handler, "/v1/changes", changeRequest{
 		ObservationToken: observation.ObservationToken,
 		Mode:             "100644",
-		ContentBase64:    base64.StdEncoding.EncodeToString(want),
+		ContentBase64:    &contentBase64,
 	}, true)
 	if changed.Code != http.StatusOK {
 		t.Fatalf("change status = %d, body = %s", changed.Code, changed.Body.String())
@@ -67,10 +68,11 @@ func TestObserveThenChangeUsesAckOSGitProvider(t *testing.T) {
 		t.Fatalf("committed file = %q, want %q", got, want)
 	}
 
+	replayContent := base64.StdEncoding.EncodeToString([]byte("# replay\n"))
 	reused := postJSON(t, handler, "/v1/changes", changeRequest{
 		ObservationToken: observation.ObservationToken,
 		Mode:             "100644",
-		ContentBase64:    base64.StdEncoding.EncodeToString([]byte("# replay\n")),
+		ContentBase64:    &replayContent,
 	}, true)
 	if reused.Code != http.StatusConflict {
 		t.Fatalf("replayed stale token status = %d, body = %s; want 409", reused.Code, reused.Body.String())
