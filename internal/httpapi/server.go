@@ -287,6 +287,10 @@ func (s *Server) change(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "session_unavailable", "observation session changed; inspect the resource again")
 		return
 	}
+	if !s.now().UTC().Before(claims.ExpiresAt) {
+		writeError(w, http.StatusConflict, "invalid_observation", "observation token is invalid or expired; inspect the resource again")
+		return
+	}
 	if err := r.Context().Err(); err != nil {
 		writeError(w, http.StatusRequestTimeout, "request_cancelled", "request was cancelled before execution")
 		return

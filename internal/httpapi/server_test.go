@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -132,6 +133,97 @@ func TestObservationTokenRejectsTamperingAndExpiry(t *testing.T) {
 	}
 	if _, err := api.verifyClaims(expired); err == nil {
 		t.Fatal("expired token was accepted")
+	}
+}
+
+
+func TestChangeRejectsTokenExpiredWhileWaitingForSession(t *testing.T) {
+	root := initGitRepository(t)
+	api, err := New(Config{
+		Repositories: map[string]string{"test-repo": root},
+		BearerToken:  "test-client-token",
+		SigningKey:   []byte(strings.Repeat("s", 32)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	observed := postJSON(t, api.Handler(), "/v1/observations", map[string]string{
+		"repository_id": "test-repo",
+		"branch":        "main",
+		"path":          "README.md",
+	}, true)
+	if observed.Code != http.StatusOK {
+		t.Fatalf("observe status = %d, body = %s", observed.Code, observed.Body.String())
+	}
+	var observation observationResponse
+	if err := json.Unmarshal(observed.Body.Bytes(), &observation); err != nil {
+		t.Fatal(err)
+	}
+
+	api.mu.Lock()
+	var session *resourceSession
+	for _, candidate := range api.sessions {
+		session = candidate
+		break
+	}
+	api.mu.Unlock()
+	if session == nil {
+		t.Fatal("observation did not create a session")
+	}
+	session.mu.Lock()
+
+	var clockMu sync.Mutex
+	currentTime := observation.ExpiresAt.Add(-time.Nanosecond)
+	verified := make(chan struct{})
+	calls := 0
+	api.now = func() time.Time {
+		clockMu.Lock()
+		now := currentTime
+		calls++
+		if calls == 1 {
+			close(verified)
+		}
+		clockMu.Unlock()
+		return now
+	}
+
+	content := base64.StdEncoding.EncodeToString([]byte("# should not commit\n"))
+	body, err := json.Marshal(changeRequest{
+		ObservationToken: observation.ObservationToken,
+		Mode:             "100644",
+		ContentBase64:    &content,
+	})
+	if err != nil {
+		session.mu.Unlock()
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/v1/changes", bytes.NewReader(body))
+	request.Header.Set("Authorization", "Bearer test-client-token")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		api.Handler().ServeHTTP(response, request)
+		close(done)
+	}()
+
+	<-verified
+	clockMu.Lock()
+	currentTime = observation.ExpiresAt.Add(time.Nanosecond)
+	clockMu.Unlock()
+	session.mu.Unlock()
+	<-done
+
+	if response.Code != http.StatusConflict {
+		t.Fatalf("change status = %d, body = %s; want 409", response.Code, response.Body.String())
+	}
+	var failure errorResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &failure); err != nil {
+		t.Fatal(err)
+	}
+	if failure.Error.Code != "invalid_observation" {
+		t.Fatalf("error code = %q, want invalid_observation", failure.Error.Code)
 	}
 }
 
