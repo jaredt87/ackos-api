@@ -27,8 +27,8 @@ func TestObserveThenChangeUsesAckOSGitProvider(t *testing.T) {
 
 	observed := postJSON(t, handler, "/v1/observations", map[string]string{
 		"repository_id": "test-repo",
-		"branch":       "main",
-		"path":         "README.md",
+		"branch":        "main",
+		"path":          "README.md",
 	}, true)
 	if observed.Code != http.StatusOK {
 		t.Fatalf("observe status = %d, body = %s", observed.Code, observed.Body.String())
