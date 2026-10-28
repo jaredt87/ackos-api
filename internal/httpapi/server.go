@@ -66,13 +66,13 @@ type changeRequest struct {
 }
 
 type observationClaims struct {
-	Version      int                  `json:"v"`
-	RepositoryID string               `json:"repository_id"`
-	Branch       string               `json:"branch"`
-	Path         string               `json:"path"`
-	ResourceID   string               `json:"resource_id"`
-	Observation  observationSnapshot  `json:"observation"`
-	ExpiresAt    time.Time            `json:"expires_at"`
+	Version      int                 `json:"v"`
+	RepositoryID string              `json:"repository_id"`
+	Branch       string              `json:"branch"`
+	Path         string              `json:"path"`
+	ResourceID   string              `json:"resource_id"`
+	Observation  observationSnapshot `json:"observation"`
+	ExpiresAt    time.Time           `json:"expires_at"`
 }
 
 type observationSnapshot struct {
@@ -83,12 +83,12 @@ type observationSnapshot struct {
 }
 
 type observationResponse struct {
-	RepositoryID      string    `json:"repository_id"`
-	Branch            string    `json:"branch"`
-	Path              string    `json:"path"`
-	ObservationToken  string    `json:"observation_token"`
-	ObservedAt        time.Time `json:"observed_at"`
-	ExpiresAt         time.Time `json:"expires_at"`
+	RepositoryID     string    `json:"repository_id"`
+	Branch           string    `json:"branch"`
+	Path             string    `json:"path"`
+	ObservationToken string    `json:"observation_token"`
+	ObservedAt       time.Time `json:"observed_at"`
+	ExpiresAt        time.Time `json:"expires_at"`
 }
 
 type changeResponse struct {
