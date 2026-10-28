@@ -136,7 +136,6 @@ func TestObservationTokenRejectsTamperingAndExpiry(t *testing.T) {
 	}
 }
 
-
 func TestChangeRejectsTokenExpiredWhileWaitingForSession(t *testing.T) {
 	root := initGitRepository(t)
 	api, err := New(Config{
