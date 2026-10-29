@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -131,8 +132,17 @@ func New(cfg Config) (*Server, error) {
 		cfg.AuthorityTTL = 30 * time.Second
 	}
 	roots := make(map[string]string, len(cfg.Repositories))
+	canonicalRoots := make(map[string]string, len(cfg.Repositories))
 	for id, root := range cfg.Repositories {
 		roots[id] = root
+		canonical, err := canonicalRepositoryRoot(root)
+		if err != nil {
+			return nil, fmt.Errorf("canonicalize repository root for %q: %w", id, err)
+		}
+		if previousID, exists := canonicalRoots[canonical]; exists {
+			return nil, fmt.Errorf("repository IDs %q and %q refer to the same checkout root", previousID, id)
+		}
+		canonicalRoots[canonical] = id
 	}
 	return &Server{
 		repositories: roots,
@@ -142,6 +152,18 @@ func New(cfg Config) (*Server, error) {
 		sessions:     make(map[string]*resourceSession),
 		now:          time.Now,
 	}, nil
+}
+
+func canonicalRepositoryRoot(root string) (string, error) {
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	absolute = filepath.Clean(absolute)
+	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+		return filepath.Clean(resolved), nil
+	}
+	return absolute, nil
 }
 
 func (s *Server) Handler() http.Handler {
