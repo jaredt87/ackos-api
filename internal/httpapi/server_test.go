@@ -331,7 +331,6 @@ func initGitRepository(t *testing.T) string {
 	return root
 }
 
-
 func TestNewRejectsDuplicateCheckoutRoots(t *testing.T) {
 	root := initGitRepository(t)
 	alias := root + "/../" + filepath.Base(root)
