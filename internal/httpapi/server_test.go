@@ -330,3 +330,41 @@ func initGitRepository(t *testing.T) string {
 	runGit("commit", "-m", "initial")
 	return root
 }
+
+
+func TestNewRejectsDuplicateCheckoutRoots(t *testing.T) {
+	root := initGitRepository(t)
+	alias := filepath.Join(root, "..", filepath.Base(root))
+	symlink := filepath.Join(t.TempDir(), "checkout-link")
+	if err := os.Symlink(root, symlink); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, roots := range []map[string]string{
+		{"first": root, "second": root},
+		{"first": root, "second": alias},
+		{"first": root, "second": symlink},
+	} {
+		_, err := New(Config{
+			Repositories: roots,
+			BearerToken:  "test-client-token",
+			SigningKey:   []byte(strings.Repeat("s", 32)),
+		})
+		if err == nil {
+			t.Fatalf("New accepted duplicate checkout roots: %#v", roots)
+		}
+	}
+}
+
+func TestNewAllowsDistinctCheckoutRoots(t *testing.T) {
+	firstRoot := initGitRepository(t)
+	secondRoot := initGitRepository(t)
+	_, err := New(Config{
+		Repositories: map[string]string{"first": firstRoot, "second": secondRoot},
+		BearerToken:  "test-client-token",
+		SigningKey:   []byte(strings.Repeat("s", 32)),
+	})
+	if err != nil {
+		t.Fatalf("New rejected distinct checkout roots: %v", err)
+	}
+}
