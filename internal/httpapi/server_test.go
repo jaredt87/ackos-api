@@ -334,7 +334,7 @@ func initGitRepository(t *testing.T) string {
 
 func TestNewRejectsDuplicateCheckoutRoots(t *testing.T) {
 	root := initGitRepository(t)
-	alias := filepath.Join(root, "..", filepath.Base(root))
+	alias := root + "/../" + filepath.Base(root)
 	symlink := filepath.Join(t.TempDir(), "checkout-link")
 	if err := os.Symlink(root, symlink); err != nil {
 		t.Fatal(err)
