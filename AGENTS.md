@@ -37,3 +37,31 @@ go test -race ./...
 ```
 
 Do not omit checks or claim they passed unless they were actually run. Keep PRs scoped, document behavior changes, and add regression tests for boundary-related changes.
+
+
+## ackOS Ecosystem Routing
+
+This repository is part of the ackOS ecosystem:
+
+- **ackOS** — https://github.com/jaredt87/ackOS: the execution-control kernel. Owns authorization, governed execution, independent verification, recovery, and commitment.
+- **ackos-api** — https://github.com/jaredt87/ackos-api: the authenticated HTTP interface to ackOS. Delegates execution and verification to ackOS.
+- **Wingman** — https://github.com/jaredt87/wingman: shared agent context, instructions, skills, and integration workflows.
+
+### Related repository instructions
+
+Consult the other repositories' agent instructions when a task crosses repository boundaries, changes an integration contract, modifies shared agent workflows, or depends on another component's behavior:
+
+- ackOS instructions: https://github.com/jaredt87/ackOS/blob/main/AGENTS.md
+- ackos-api instructions: https://github.com/jaredt87/ackos-api/blob/main/AGENTS.md
+- Wingman instructions: https://github.com/jaredt87/wingman/blob/main/AGENTS.md
+
+### Cross-repository coordination
+
+- Read the local instructions of every repository affected by a cross-repository task.
+- ackOS remains the execution and control authority; do not create parallel authorization, execution, verification, recovery, or commitment paths.
+- ackos-api is an interface and adapter, not a competing control engine.
+- Wingman supplies shared agent context and workflows; it must not bypass ackOS for changes designated to be governed through ackOS.
+- Identify contract/dependency changes explicitly. Keep changes independently reviewable where practical.
+- Verify each affected repository using its own documented checks and report incomplete work, assumptions, and dependencies accurately.
+
+This routing section is an ecosystem navigation and coordination layer. It does not override repository-specific architecture, security, development, or agent instructions. If instructions conflict, stop and resolve the conflict.
